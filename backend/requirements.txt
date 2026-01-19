@@ -15,10 +15,10 @@ opentelemetry-instrumentation-sqlalchemy==0.43b0
 opentelemetry-instrumentation-redis==0.43b0
 opentelemetry-exporter-otlp-proto-http==1.22.0
 
-# Agents (Phase 2+)
+# LangChain + Groq
 langgraph==0.0.30
 langchain==0.1.4
-langchain-openai==0.0.5
+langchain-groq==0.0.1
 langchain-community==0.0.16
 
 # SQL Safety
@@ -27,3 +27,4 @@ sqlglot==20.11.0
 # Data handling
 pandas==2.1.4
 numpy==1.26.3
+plotly==5.18.0

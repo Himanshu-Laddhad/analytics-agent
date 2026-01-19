@@ -11,14 +11,18 @@ class Settings(BaseSettings):
     REDIS_URL: str
     REDIS_TTL: int = 300  # 5 minutes
     
-    # OpenAI
-    OPENAI_API_KEY: str
-    OPENAI_MODEL: str = "gpt-4o"
+    # Groq (replacing OpenAI)
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"  # Fast and smart
+    # Alternative models:
+    # "llama-3.1-70b-versatile" - Very capable
+    # "mixtral-8x7b-32768" - Good for long context
+    # "gemma2-9b-it" - Faster, lighter
     
     # OpenTelemetry
     OTEL_ENABLED: bool = True
-    OTEL_SERVICE_NAME: str = "ANALYTICS_AGENT"
-    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318"
+    OTEL_SERVICE_NAME: str = "analytics-agent"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://jaeger:4318"
     
     # SQL Safety
     SQL_QUERY_TIMEOUT: int = 30  # seconds

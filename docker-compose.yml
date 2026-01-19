@@ -12,6 +12,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics_user -d analytics_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -20,28 +25,18 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://analytics_user:dev_password@postgres:5432/analytics_db
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OTEL_ENABLED: "true"
-      DEBUG: "true"
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./backend/app:/app/app
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"  # UI
-      - "4318:4318"    # OTLP HTTP
+      - "16686:16686"  # Jaeger UI
+      - "4318:4318"    # OTLP HTTP receiver
+      - "6831:6831/udp"  # Jaeger agent
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
 
