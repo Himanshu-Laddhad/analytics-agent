@@ -1,5 +1,10 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
+import os
+
+# Get the backend directory
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     # Database
@@ -9,23 +14,19 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str
-    REDIS_TTL: int = 300  # 5 minutes
+    REDIS_TTL: int = 300
     
-    # Groq (replacing OpenAI)
+    # Groq
     GROQ_API_KEY: str
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"  # Fast and smart
-    # Alternative models:
-    # "llama-3.1-70b-versatile" - Very capable
-    # "mixtral-8x7b-32768" - Good for long context
-    # "gemma2-9b-it" - Faster, lighter
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
     
     # OpenTelemetry
     OTEL_ENABLED: bool = True
     OTEL_SERVICE_NAME: str = "analytics-agent"
-    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://jaeger:4318"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318"
     
     # SQL Safety
-    SQL_QUERY_TIMEOUT: int = 30  # seconds
+    SQL_QUERY_TIMEOUT: int = 30
     SQL_MAX_ROWS: int = 10000
     SQL_MAX_JOINS: int = 3
     
@@ -34,7 +35,11 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     class Config:
-        env_file = ".env"
+        # Look for .env in backend directory
+        env_file = str(BASE_DIR / ".env")
+        env_file_encoding = 'utf-8'
+        case_sensitive = False
+        extra = 'ignore'
 
 @lru_cache()
 def get_settings() -> Settings:
