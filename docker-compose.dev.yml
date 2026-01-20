@@ -46,30 +46,19 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Database - using service name 'postgres' for Docker networking
       DATABASE_URL: postgresql://analytics_user@postgres:5432/analytics_db
       DB_POOL_SIZE: 5
       DB_MAX_OVERFLOW: 10
-      
-      # Redis - using service name 'redis'
       REDIS_URL: redis://redis:6379/0
       REDIS_TTL: 300
-      
-      # Groq API - from root .env file
       GROQ_API_KEY: ${GROQ_API_KEY}
       GROQ_MODEL: llama-3.3-70b-versatile
-      
-      # OpenTelemetry - using service name 'jaeger'
       OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: analytics-agent
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-      
-      # SQL Safety
       SQL_QUERY_TIMEOUT: 30
       SQL_MAX_ROWS: 10000
       SQL_MAX_JOINS: 3
-      
-      # API
       API_PORT: 8000
       DEBUG: "true"
     depends_on:
@@ -78,7 +67,20 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend/app:/app/app  # Hot reload for code changes
+      - ./backend/app:/app/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/streamlit_app.py:/app/streamlit_app.py
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
 
 volumes:
   postgres_data:
