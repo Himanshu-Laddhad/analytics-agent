@@ -113,18 +113,28 @@ async def process_query(request: QueryRequest):
         logger.info("Starting agent graph execution")
         final_state = agent_graph.invoke(initial_state)
         
-        # Build response
+        # Extract data from final state
+        data_dict = final_state.get("data", {})
+        data_profile = final_state.get("data_profile", {})
+        
+        # Build response with proper structure
         response = {
             "sql": final_state.get("sql_query") or "N/A",
             "visualization_code": final_state.get("viz_code") or "# No visualization generated",
             "insight": final_state.get("insight") or "Unable to generate insight",
             "data_summary": {
-                "rows": final_state.get("data_profile", {}).get("row_count", 0),
-                "columns": final_state.get("data_profile", {}).get("columns", []),
-                "type": final_state.get("data_profile", {}).get("type", "unknown")
+                "row_count": data_dict.get("row_count", 0),  # ← Fixed!
+                "columns": data_dict.get("columns", []),      # ← Fixed!
+                "type": data_profile.get("type", "unknown"),
+                "data": data_dict.get("data", [])             # ← CRITICAL FIX!
             },
             "cached": False
         }
+        
+        # Debug logging
+        logger.info(f"Response data_summary: row_count={response['data_summary']['row_count']}, "
+                   f"columns={response['data_summary']['columns']}, "
+                   f"data_len={len(response['data_summary']['data'])}")
         
         # Cache successful results
         if request.use_cache and not final_state.get("error"):

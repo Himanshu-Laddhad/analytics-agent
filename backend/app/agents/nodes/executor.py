@@ -29,15 +29,26 @@ def execute_query(state: dict) -> dict:
     try:
         with get_db() as db:
             result = db.execute(text(sql_query))
-            data = pd.DataFrame(result.fetchall(), columns=result.keys())
+            
+            # Fetch all rows
+            rows = result.fetchall()
+            columns = list(result.keys())
+            
+            # Convert to pandas DataFrame
+            data = pd.DataFrame(rows, columns=columns)
             
             logger.info(f"Query executed: {len(data)} rows")
             
+            # Convert DataFrame to dict for JSON serialization
+            # CRITICAL: Include the actual data!
             data_dict = {
-                "columns": data.columns.tolist(),
-                "data": data.to_dict(orient="records"),
+                "columns": columns,
+                "data": data.to_dict(orient="records"),  # ← This is the key fix!
                 "row_count": len(data)
             }
+            
+            # Debug log
+            logger.info(f"Returning data with {len(data)} rows, columns: {columns}")
             
             return {
                 **state,
