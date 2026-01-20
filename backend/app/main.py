@@ -6,7 +6,7 @@ from .config import get_settings
 from .database import get_schema_info
 from .redis_client import cache
 from .observability.tracer import setup_telemetry, instrument_app
-from .agents import agent_graph, AgentState
+from agents import agent_graph, AgentState
 
 # Setup logging
 logging.basicConfig(

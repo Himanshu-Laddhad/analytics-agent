@@ -2,6 +2,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 import logging
+import json
 from ...config import get_settings
 
 settings = get_settings()
@@ -11,39 +12,33 @@ logger = logging.getLogger(__name__)
 llm = ChatGroq(
     model=settings.GROQ_MODEL,
     api_key=settings.GROQ_API_KEY,
-    temperature=0,  # Deterministic for analytics
+    temperature=0,
 )
 
 INTENT_SYSTEM_PROMPT = """You are an expert at understanding data analytics questions.
 
-Your job is to extract the user's intent from their natural language query.
+Extract these elements from the user's query:
+- metrics: What are they measuring?
+- dimensions: What are they grouping by?
+- filters: Any conditions?
+- aggregation: How to aggregate?
+- time_range: Any time period?
+- limit: How many results?
 
-Extract these elements:
-- metrics: What are they measuring? (revenue, count, average, etc.)
-- dimensions: What are they grouping by? (product, date, customer, etc.)
-- filters: Any conditions? (date ranges, categories, status, etc.)
-- aggregation: How to aggregate? (sum, count, avg, max, min)
-- time_range: Any time period mentioned? (last month, this year, etc.)
-- limit: How many results? (top 5, first 10, etc.)
-
-Database schema context:
+Database schema:
 - customers: customer_id, customer_name, email, country, signup_date
 - products: product_id, product_name, category, price, stock_quantity
 - orders: order_id, customer_id, order_date, total_amount, status
 - order_items: item_id, order_id, product_id, quantity, unit_price
 
-Respond ONLY with valid JSON in this format:
+Respond with JSON only:
 {
-  "metrics": ["total_amount", "quantity"],
+  "metrics": ["total_amount"],
   "dimensions": ["product_name"],
-  "filters": {"order_date": ">= '2025-01-01'"},
+  "filters": {},
   "aggregation": "sum",
-  "time_range": "this_month",
-  "limit": 5,
-  "sort": "desc"
+  "limit": 5
 }
-
-If unclear, make reasonable assumptions based on common analytics patterns.
 """
 
 def extract_intent(state: dict) -> dict:
@@ -58,7 +53,7 @@ def extract_intent(state: dict) -> dict:
         
         response = llm.invoke(messages)
         
-        # Parse JSON response
+        # Parse JSON
         parser = JsonOutputParser()
         intent = parser.parse(response.content)
         

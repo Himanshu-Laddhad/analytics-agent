@@ -29,13 +29,10 @@ def execute_query(state: dict) -> dict:
     try:
         with get_db() as db:
             result = db.execute(text(sql_query))
-            
-            # Convert to pandas DataFrame
             data = pd.DataFrame(result.fetchall(), columns=result.keys())
             
-            logger.info(f"Query executed successfully: {len(data)} rows")
+            logger.info(f"Query executed: {len(data)} rows")
             
-            # Convert DataFrame to dict for JSON serialization
             data_dict = {
                 "columns": data.columns.tolist(),
                 "data": data.to_dict(orient="records"),
@@ -49,7 +46,7 @@ def execute_query(state: dict) -> dict:
             }
             
     except Exception as e:
-        logger.error(f"Query execution error: {e}")
+        logger.error(f"Execution error: {e}")
         return {
             **state,
             "data": None,

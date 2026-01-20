@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def interpret_data(state: dict) -> dict:
-    """Analyze and profile the returned data"""
+    """Analyze data shape and type"""
     
     if state.get("error") or state.get("execution_error"):
         return state
@@ -16,10 +16,9 @@ def interpret_data(state: dict) -> dict:
             "data_profile": None
         }
     
-    logger.info("Interpreting data shape and type")
+    logger.info("Interpreting data")
     
     try:
-        # Reconstruct DataFrame
         df = pd.DataFrame(data_dict["data"])
         
         if df.empty:
@@ -27,11 +26,10 @@ def interpret_data(state: dict) -> dict:
                 **state,
                 "data_profile": {
                     "type": "empty",
-                    "message": "Query returned no results"
+                    "message": "No results"
                 }
             }
         
-        # Detect data type
         profile = {
             "row_count": len(df),
             "column_count": len(df.columns),
@@ -39,29 +37,19 @@ def interpret_data(state: dict) -> dict:
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()}
         }
         
-        # Detect time series
-        date_columns = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
-        if date_columns:
+        # Detect type
+        date_cols = [col for col in df.columns if 'date' in col.lower()]
+        if date_cols:
             profile["type"] = "time_series"
-            profile["time_column"] = date_columns[0]
-        
-        # Detect categorical aggregation
+            profile["time_column"] = date_cols[0]
         elif len(df.columns) == 2:
             profile["type"] = "categorical"
-            profile["category_column"] = df.columns[0]
-            profile["value_column"] = df.columns[1]
-        
-        # Detect top-N ranking
-        elif any("total" in col.lower() or "sum" in col.lower() or "count" in col.lower() for col in df.columns):
-            profile["type"] = "ranking"
-        
         else:
             profile["type"] = "tabular"
         
-        # Add sample data
         profile["sample"] = df.head(3).to_dict(orient="records")
         
-        logger.info(f"Data profile: {profile['type']}, {profile['row_count']} rows")
+        logger.info(f"Data profile: {profile['type']}")
         
         return {
             **state,
@@ -69,7 +57,7 @@ def interpret_data(state: dict) -> dict:
         }
         
     except Exception as e:
-        logger.error(f"Data interpretation error: {e}")
+        logger.error(f"Interpretation error: {e}")
         return {
             **state,
             "data_profile": {"type": "error", "message": str(e)}
