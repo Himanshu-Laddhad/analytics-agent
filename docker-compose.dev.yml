@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -7,6 +5,7 @@ services:
       POSTGRES_USER: analytics_user
       POSTGRES_PASSWORD: dev_password
       POSTGRES_DB: analytics_db
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
     volumes:
@@ -34,11 +33,52 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"  # Jaeger UI
-      - "4318:4318"    # OTLP HTTP receiver
+      - "16686:16686"
+      - "4318:4318"
       - "6831:6831/udp"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      # Database - using service name 'postgres' for Docker networking
+      DATABASE_URL: postgresql://analytics_user@postgres:5432/analytics_db
+      DB_POOL_SIZE: 5
+      DB_MAX_OVERFLOW: 10
+      
+      # Redis - using service name 'redis'
+      REDIS_URL: redis://redis:6379/0
+      REDIS_TTL: 300
+      
+      # Groq API - from root .env file
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: llama-3.3-70b-versatile
+      
+      # OpenTelemetry - using service name 'jaeger'
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: analytics-agent
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      
+      # SQL Safety
+      SQL_QUERY_TIMEOUT: 30
+      SQL_MAX_ROWS: 10000
+      SQL_MAX_JOINS: 3
+      
+      # API
+      API_PORT: 8000
+      DEBUG: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app  # Hot reload for code changes
 
 volumes:
   postgres_data:
