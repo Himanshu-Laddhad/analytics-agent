@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime
 import json
+import io
 
 # Page config
 st.set_page_config(
@@ -13,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS (keep existing)
 st.markdown("""
 <style>
     .main-header {
@@ -27,19 +28,12 @@ st.markdown("""
         color: #666;
         margin-bottom: 2rem;
     }
-    .metric-card {
+    .data-source-card {
         background-color: #f0f2f6;
         padding: 1rem;
         border-radius: 0.5rem;
         margin: 0.5rem 0;
-    }
-    .sql-box {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
         border-left: 4px solid #1f77b4;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9rem;
     }
     .insight-box {
         background-color: #e7f3ff;
@@ -48,44 +42,19 @@ st.markdown("""
         border-left: 4px solid #0066cc;
         margin: 1rem 0;
     }
-    .success-badge {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.25rem;
-        font-weight: bold;
-    }
-    .cache-badge {
-        background-color: #fff3cd;
-        color: #856404;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.25rem;
-        font-weight: bold;
-    }
-    .history-item {
-        padding: 0.5rem;
-        margin: 0.25rem 0;
-        border-radius: 0.25rem;
-        background-color: #f8f9fa;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    .history-item:hover {
-        background-color: #e9ecef;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_URL = "http://backend:8000"  # Docker service name
-# For local testing outside Docker, use: "http://localhost:8000"
+API_URL = "http://backend:8000"
 
 # Initialize session state
 if 'query_history' not in st.session_state:
     st.session_state.query_history = []
-
 if 'favorite_queries' not in st.session_state:
     st.session_state.favorite_queries = []
+if 'data_sources' not in st.session_state:
+    st.session_state.data_sources = []
 
 # Header
 st.markdown('<div class="main-header">🤖 Analytics Agent</div>', unsafe_allow_html=True)
@@ -111,9 +80,92 @@ with st.sidebar:
     
     st.divider()
     
-    # Saved Queries Section
-    st.header("⭐ Saved Queries")
+    # Data Sources Section
+    st.header("📁 Data Sources")
     
+    # Refresh data sources
+    try:
+        sources_response = requests.get(f"{API_URL}/data-sources", timeout=5)
+        if sources_response.status_code == 200:
+            st.session_state.data_sources = sources_response.json().get('sources', [])
+    except:
+        pass
+    
+    # Upload CSV
+    with st.expander("➕ Upload New CSV", expanded=False):
+        uploaded_file = st.file_uploader("Choose a CSV file", type=['csv'])
+        table_name = st.text_input("Table name (optional)", placeholder="my_data")
+        description = st.text_area("Description (optional)", placeholder="Sales data from Q4 2024")
+        
+        if st.button("Upload", type="primary", use_container_width=True):
+            if uploaded_file:
+                with st.spinner("Uploading..."):
+                    try:
+                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+                        params = {}
+                        if table_name:
+                            params["table_name"] = table_name
+                        if description:
+                            params["description"] = description
+                        
+                        response = requests.post(
+                            f"{API_URL}/upload-csv",
+                            files=files,
+                            params=params,
+                            timeout=60
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(f"✅ {result['message']}")
+                            st.info(f"Table: `{result['table_name']}`\nRows: {result['rows']}")
+                            st.rerun()
+                        else:
+                            st.error(f"Upload failed: {response.text}")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+    
+    # Show available data sources
+    if st.session_state.data_sources:
+        st.caption(f"**{len(st.session_state.data_sources)} data source(s) available**")
+        
+        for source in st.session_state.data_sources:
+            with st.expander(f"📊 {source['name']}", expanded=False):
+                st.caption(f"**Table:** `{source['table_name']}`")
+                st.caption(f"**Rows:** {source['row_count']:,}")
+                st.caption(f"**Columns:** {source['column_count']}")
+                if source.get('description'):
+                    st.caption(f"**Description:** {source['description']}")
+                st.caption(f"**Uploaded:** {source.get('uploaded_at', 'N/A')[:10]}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("👁️ View", key=f"view_{source['table_name']}", use_container_width=True):
+                        try:
+                            info = requests.get(f"{API_URL}/data-sources/{source['table_name']}", timeout=5).json()
+                            st.session_state.viewing_table = info
+                            st.rerun()
+                        except:
+                            st.error("Failed to load table info")
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"del_{source['table_name']}", use_container_width=True):
+                        try:
+                            response = requests.delete(f"{API_URL}/data-sources/{source['table_name']}", timeout=5)
+                            if response.status_code == 200:
+                                st.success("Deleted!")
+                                st.rerun()
+                            else:
+                                st.error("Delete failed")
+                        except:
+                            st.error("Error deleting")
+    else:
+        st.info("No data sources yet. Upload a CSV to get started!")
+    
+    st.divider()
+    
+    # Saved Queries
+    st.header("⭐ Saved Queries")
     if st.session_state.favorite_queries:
         for i, fav in enumerate(st.session_state.favorite_queries):
             col1, col2 = st.columns([5, 1])
@@ -126,15 +178,13 @@ with st.sidebar:
                     st.session_state.favorite_queries.pop(i)
                     st.rerun()
     else:
-        st.info("No saved queries yet. Run a query and click '⭐ Save' to add it here!")
+        st.info("No saved queries yet")
     
     st.divider()
     
-    # Query History Section
+    # Query History
     st.header("📜 Query History")
-    
     if st.session_state.query_history:
-        # Show statistics
         total_queries = len(st.session_state.query_history)
         cached_queries = sum(1 for q in st.session_state.query_history if q.get('result', {}).get('cached'))
         
@@ -142,14 +192,9 @@ with st.sidebar:
         col1.metric("Total", total_queries)
         col2.metric("Cached", cached_queries)
         
-        st.caption("Last 10 queries:")
-        
-        # Show recent queries
         for i, hist in enumerate(reversed(st.session_state.query_history[-10:])):
             with st.expander(f"🕐 {hist['timestamp']}", expanded=False):
                 st.text(hist['query'])
-                
-                # Show if it was cached
                 if hist.get('result', {}).get('cached'):
                     st.caption("⚡ Served from cache")
                 
@@ -159,7 +204,6 @@ with st.sidebar:
                         st.session_state.current_query = hist['query']
                         st.rerun()
                 with col2:
-                    # Check if already saved
                     is_saved = any(fav['query'] == hist['query'] for fav in st.session_state.favorite_queries)
                     if not is_saved:
                         if st.button("⭐ Save", key=f"save_{i}", use_container_width=True):
@@ -169,38 +213,43 @@ with st.sidebar:
                             })
                             st.rerun()
         
-        # Clear history button
         if st.button("🗑️ Clear History", type="secondary", use_container_width=True):
             st.session_state.query_history = []
             st.rerun()
     else:
-        st.info("No queries yet. Ask a question to get started!")
-    
-    st.divider()
-    
-    # Quick Tips
-    with st.expander("💡 Tips & Examples"):
-        st.markdown("""
-        **Try questions like:**
-        - What were the top 5 products by revenue?
-        - Show me daily order trends
-        - Which customer spent the most?
-        - Compare sales by category
-        - How many pending orders?
-        - What's the average order value?
-        
-        **Pro tips:**
-        - ⭐ Save frequently used queries
-        - ⚡ Enable cache for faster results
-        - 📥 Download data as CSV
-        - 🔍 View generated SQL queries
-        """)
+        st.info("No queries yet")
 
 # Main content area
+# Show table viewer if requested
+if 'viewing_table' in st.session_state:
+    info = st.session_state.viewing_table
+    
+    st.header(f"📊 {info['table_name']}")
+    st.caption(f"**{info['row_count']:,} rows** | **{len(info['columns'])} columns**")
+    
+    col1, col2 = st.columns([6, 1])
+    with col2:
+        if st.button("✖️ Close"):
+            del st.session_state.viewing_table
+            st.rerun()
+    
+    # Column info
+    st.subheader("Columns")
+    col_df = pd.DataFrame(info['columns'])
+    st.dataframe(col_df, use_container_width=True)
+    
+    # Sample data
+    st.subheader("Sample Data (first 5 rows)")
+    sample_df = pd.DataFrame(info['sample_data'])
+    st.dataframe(sample_df, use_container_width=True)
+    
+    st.divider()
+
+# Query input
 query_input = st.text_input(
     "🔍 Ask your question:",
     value=st.session_state.get('current_query', ''),
-    placeholder="e.g., What were the top products by revenue last month?",
+    placeholder="e.g., What are the top products by revenue?",
     key="query_input"
 )
 
@@ -210,11 +259,10 @@ with col1:
 with col2:
     use_cache = st.checkbox("⚡ Use Cache", value=True)
 
-# Process query
+# Process query (keep existing query processing code)
 if ask_button and query_input:
     with st.spinner("🤔 Thinking..."):
         try:
-            # Make API request
             response = requests.post(
                 f"{API_URL}/query",
                 json={"query": query_input, "use_cache": use_cache},
@@ -223,21 +271,18 @@ if ask_button and query_input:
             response.raise_for_status()
             result = response.json()
             
-            # Add to history
             st.session_state.query_history.append({
                 'query': query_input,
                 'timestamp': datetime.now().strftime("%H:%M:%S"),
                 'result': result
             })
             
-            # Clear current query
             if 'current_query' in st.session_state:
                 del st.session_state.current_query
             
-            # Display results
             st.success("✅ Query executed successfully!")
             
-            # Performance metrics - FIXED VERSION
+            # Metrics
             col1, col2, col3 = st.columns(3)
             with col1:
                 row_count = result.get('data_summary', {}).get('row_count', 0)
@@ -249,7 +294,7 @@ if ask_button and query_input:
                 data_type = result.get('data_summary', {}).get('type', 'unknown')
                 st.metric("Data Type", data_type.title())
             
-            # Save query button
+            # Save button
             is_already_saved = any(fav['query'] == query_input for fav in st.session_state.favorite_queries)
             if not is_already_saved:
                 if st.button("⭐ Save this query for later"):
@@ -264,28 +309,23 @@ if ask_button and query_input:
             st.markdown("### 💡 Insight")
             st.markdown(f'<div class="insight-box">{result.get("insight", "No insight available")}</div>', unsafe_allow_html=True)
             
-            # Visualization - FIXED VERSION WITH TYPE CONVERSION
+            # Visualization
             st.markdown("### 📊 Visualization")
             
             if result.get('visualization_code') and result['visualization_code'] != "# No visualization generated":
                 try:
-                    # Get data from response
                     data_summary = result.get('data_summary', {})
                     
                     if 'data' in data_summary and data_summary['data']:
-                        # Create DataFrame
                         data = pd.DataFrame(data_summary['data'])
                         
-                        # CRITICAL FIX: Convert numeric columns to proper types
                         for col in data.columns:
-                            # Try to convert to numeric
                             try:
                                 data[col] = pd.to_numeric(data[col], errors='ignore')
                             except:
                                 pass
                         
                         if not data.empty:
-                            # Execute visualization code
                             local_vars = {'df': data, 'go': go, 'pd': pd}
                             try:
                                 exec(result['visualization_code'], {}, local_vars)
@@ -295,17 +335,10 @@ if ask_button and query_input:
                                     st.plotly_chart(fig, use_container_width=True)
                                 else:
                                     st.warning("Visualization code didn't produce a figure")
-                                    st.code(result['visualization_code'], language='python')
                             except Exception as viz_error:
                                 st.error(f"Error rendering visualization: {str(viz_error)}")
                                 with st.expander("🔍 Debug Info"):
                                     st.write("**Error:**", str(viz_error))
-                                    st.write("**Data types:**", data.dtypes.to_dict())
-                                    st.write("**Data shape:**", data.shape)
-                                    st.write("**Columns:**", data.columns.tolist())
-                                    st.write("**First few rows:**")
-                                    st.dataframe(data.head())
-                                    st.write("**Visualization code:**")
                                     st.code(result['visualization_code'], language='python')
                         else:
                             st.info("No data to visualize")
@@ -313,29 +346,20 @@ if ask_button and query_input:
                         st.info("No data available for visualization")
                 except Exception as e:
                     st.error(f"Visualization error: {str(e)}")
-                    with st.expander("🔍 Debug Information"):
-                        st.write("**Error details:**", str(e))
-                        if 'data_summary' in result:
-                            st.write("**Data summary:**", result['data_summary'])
-                        if result.get('visualization_code'):
-                            st.code(result['visualization_code'], language='python')
             else:
                 st.info("No visualization generated for this query")
             
-            # SQL Query (collapsible)
+            # SQL Query
             with st.expander("🔍 View SQL Query", expanded=False):
-                st.markdown(f'<div class="sql-box">{result.get("sql", "No SQL generated")}</div>', unsafe_allow_html=True)
-                if st.button("📋 Copy SQL"):
-                    st.code(result.get('sql', ''), language='sql')
+                st.code(result.get('sql', ''), language='sql')
             
-            # Raw data (collapsible)
+            # Raw data
             with st.expander("📄 View Raw Data", expanded=False):
                 data_summary = result.get('data_summary', {})
                 if 'data' in data_summary and data_summary['data']:
                     df = pd.DataFrame(data_summary['data'])
                     st.dataframe(df, use_container_width=True)
                     
-                    # Download button
                     csv = df.to_csv(index=False)
                     st.download_button(
                         label="📥 Download as CSV",
@@ -352,15 +376,10 @@ if ask_button and query_input:
             st.error("🔌 Cannot connect to backend. Make sure the API is running.")
         except requests.exceptions.HTTPError as e:
             st.error(f"❌ API Error: {e.response.status_code}")
-            if e.response.text:
-                with st.expander("Error Details"):
-                    st.code(e.response.text)
+            with st.expander("Error Details"):
+                st.code(e.response.text)
         except Exception as e:
             st.error(f"❌ Unexpected error: {str(e)}")
-            with st.expander("Error Details"):
-                st.write(str(e))
-                import traceback
-                st.code(traceback.format_exc())
 
 # Footer
 st.divider()

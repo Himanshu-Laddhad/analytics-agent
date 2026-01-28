@@ -7,6 +7,10 @@ from .database import get_schema_info
 from .redis_client import cache
 from .observability.tracer import setup_telemetry, instrument_app
 from .agents import agent_graph, AgentState
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from .data_sources.manager import DataSourceManager
+import pandas as pd
+import io
 
 # Setup logging
 logging.basicConfig(
@@ -149,6 +153,79 @@ async def process_query(request: QueryRequest):
             status_code=500, 
             detail=f"Failed to process query: {str(e)}"
         )
+    
+# Initialize data source manager
+data_source_manager = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize data source manager on startup"""
+    global data_source_manager
+    data_source_manager = DataSourceManager(settings.DATABASE_URL)
+    logger.info("Data source manager initialized")
+
+@app.post("/upload-csv")
+async def upload_csv(file: UploadFile = File(...), table_name: str = None, description: str = ""):
+    """Upload CSV file and create table"""
+    try:
+        # Read CSV
+        contents = await file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        # Generate table name if not provided
+        if not table_name:
+            table_name = file.filename.replace('.csv', '').replace(' ', '_').lower()
+        
+        # Clean table name
+        table_name = ''.join(c for c in table_name if c.isalnum() or c == '_')
+        
+        # Upload
+        result = data_source_manager.upload_csv(df, table_name, description)
+        
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Upload failed"))
+            
+    except Exception as e:
+        logger.error(f"CSV upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/data-sources")
+async def get_data_sources():
+    """Get all available data sources"""
+    try:
+        sources = data_source_manager.get_all_sources()
+        return {"sources": sources}
+    except Exception as e:
+        logger.error(f"Error getting data sources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/data-sources/{table_name}")
+async def get_table_info(table_name: str):
+    """Get detailed info about a table"""
+    try:
+        info = data_source_manager.get_table_info(table_name)
+        if info:
+            return info
+        else:
+            raise HTTPException(status_code=404, detail="Table not found")
+    except Exception as e:
+        logger.error(f"Error getting table info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/data-sources/{table_name}")
+async def delete_data_source(table_name: str):
+    """Delete a data source"""
+    try:
+        result = data_source_manager.delete_source(table_name)
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Delete failed"))
+    except Exception as e:
+        logger.error(f"Error deleting source: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
