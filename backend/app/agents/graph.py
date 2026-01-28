@@ -7,7 +7,7 @@ from .nodes.sql_generator import generate_sql
 from .nodes.executor import execute_query
 from .nodes.interpreter import interpret_data
 from .nodes.viz_planner import plan_visualization
-from .nodes.viz_generator import generate_visualization_code
+from .nodes.viz_generator import generate_viz_code
 from .nodes.insight import generate_insight
 from ..safety.validator import validate_sql_safety
 
@@ -48,7 +48,7 @@ workflow.add_node("validate_sql", validate_sql_safety)
 workflow.add_node("execute", execute_query)
 workflow.add_node("interpret", interpret_data)
 workflow.add_node("plan_viz", plan_visualization)
-workflow.add_node("generate_viz", generate_visualization_code)
+workflow.add_node("generate_viz", generate_viz_code)
 workflow.add_node("generate_insight", generate_insight)
 workflow.add_node("error", error_handler)
 

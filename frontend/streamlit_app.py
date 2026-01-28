@@ -264,55 +264,59 @@ if ask_button and query_input:
             st.markdown("### 💡 Insight")
             st.markdown(f'<div class="insight-box">{result.get("insight", "No insight available")}</div>', unsafe_allow_html=True)
             
-            # Visualization - FIXED VERSION
+            # Visualization - FIXED VERSION WITH TYPE CONVERSION
             st.markdown("### 📊 Visualization")
             
             if result.get('visualization_code') and result['visualization_code'] != "# No visualization generated":
                 try:
-                    # Get data from response - handle different response structures
+                    # Get data from response
                     data_summary = result.get('data_summary', {})
                     
-                    # Try to get data from different possible locations
                     if 'data' in data_summary and data_summary['data']:
+                        # Create DataFrame
                         data = pd.DataFrame(data_summary['data'])
-                    else:
-                        # Fallback: check if columns exist and create empty DataFrame
-                        columns = data_summary.get('columns', [])
-                        if columns:
-                            data = pd.DataFrame(columns=columns)
+                        
+                        # CRITICAL FIX: Convert numeric columns to proper types
+                        for col in data.columns:
+                            # Try to convert to numeric
+                            try:
+                                data[col] = pd.to_numeric(data[col], errors='ignore')
+                            except:
+                                pass
+                        
+                        if not data.empty:
+                            # Execute visualization code
+                            local_vars = {'df': data, 'go': go, 'pd': pd}
+                            try:
+                                exec(result['visualization_code'], {}, local_vars)
+                                fig = local_vars.get('fig')
+                                
+                                if fig:
+                                    st.plotly_chart(fig, use_container_width=True)
+                                else:
+                                    st.warning("Visualization code didn't produce a figure")
+                                    st.code(result['visualization_code'], language='python')
+                            except Exception as viz_error:
+                                st.error(f"Error rendering visualization: {str(viz_error)}")
+                                with st.expander("🔍 Debug Info"):
+                                    st.write("**Error:**", str(viz_error))
+                                    st.write("**Data types:**", data.dtypes.to_dict())
+                                    st.write("**Data shape:**", data.shape)
+                                    st.write("**Columns:**", data.columns.tolist())
+                                    st.write("**First few rows:**")
+                                    st.dataframe(data.head())
+                                    st.write("**Visualization code:**")
+                                    st.code(result['visualization_code'], language='python')
                         else:
-                            data = pd.DataFrame()
-                    
-                    if not data.empty:
-                        # Execute visualization code
-                        local_vars = {'df': data, 'go': go, 'pd': pd}
-                        try:
-                            exec(result['visualization_code'], {}, local_vars)
-                            fig = local_vars.get('fig')
-                            
-                            if fig:
-                                st.plotly_chart(fig, use_container_width=True)
-                            else:
-                                st.warning("Visualization code didn't produce a figure")
-                                st.code(result['visualization_code'], language='python')
-                        except Exception as viz_error:
-                            st.error(f"Error rendering visualization: {str(viz_error)}")
-                            with st.expander("🔍 Debug Info"):
-                                st.write("**Error:**", str(viz_error))
-                                st.write("**Data shape:**", data.shape)
-                                st.write("**Columns:**", data.columns.tolist())
-                                st.write("**First few rows:**")
-                                st.dataframe(data.head())
-                                st.write("**Visualization code:**")
-                                st.code(result['visualization_code'], language='python')
+                            st.info("No data to visualize")
                     else:
-                        st.info("No data to visualize")
+                        st.info("No data available for visualization")
                 except Exception as e:
                     st.error(f"Visualization error: {str(e)}")
-                    # Show debug information
                     with st.expander("🔍 Debug Information"):
                         st.write("**Error details:**", str(e))
-                        st.write("**Data summary:**", data_summary)
+                        if 'data_summary' in result:
+                            st.write("**Data summary:**", result['data_summary'])
                         if result.get('visualization_code'):
                             st.code(result['visualization_code'], language='python')
             else:
